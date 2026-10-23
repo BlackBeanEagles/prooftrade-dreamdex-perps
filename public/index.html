@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101719">
+  <title>ProofTrade — trade with a rule</title>
+  <meta name="description" content="A risk-aware testnet perps order planner with verifiable receipts for dreamDEX.">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">P<span class="mark-cut">/</span>T</span><span>PROOFTRADE</span></div>
+      <div class="top-right"><span id="connection" class="status"><span class="status-dot"></span>Connecting</span><span class="network">SOMNIA HIDEKI · TESTNET</span></div>
+    </header>
+    <main>
+      <section class="intro">
+        <div><div class="eyebrow">TRADE WITH A RULE</div><h1>Know the risk.<br><em>Keep the proof.</em></h1><p>Plan a BTC perpetual order against a fixed notional limit, check the live account gate, and save the confirmed transaction as a trade receipt.</p></div>
+        <div class="intro-side"><span class="issue">PROOFTRADE / 001</span><div class="side-rule"></div><p>Every trade starts with an explicit limit. Every result ends with a chain record.</p></div>
+      </section>
+      <section class="market-strip" aria-label="Live market">
+        <div class="metric"><span>MARKET</span><strong>BTC-PERP</strong><small id="market-health">Loading live market</small></div>
+        <div class="metric"><span>MARK PRICE</span><strong id="mark-price">—</strong><small>USDso per BTC</small></div>
+        <div class="metric"><span>INDEX PRICE</span><strong id="index-price">—</strong><small>USDso per BTC</small></div>
+        <div class="metric"><span>FUNDING RATE</span><strong id="funding-rate">—</strong><small id="funding-caption">Current SDK reading</small></div>
+        <button id="refresh" class="refresh" type="button" aria-label="Refresh live data">REFRESH <span>↗</span></button>
+      </section>
+      <div id="message" class="message" role="status" hidden></div>
+      <div class="columns">
+        <section class="panel planner">
+          <div class="section-head"><div><span class="step">01 / PLAN</span><h2>Define the trade</h2></div><span class="panel-note">TESTNET ORDERS ONLY</span></div>
+          <form id="trade-form">
+            <label class="field"><span>WALLET ADDRESS</span><input id="account" name="account" type="text" spellcheck="false" autocomplete="off" placeholder="0x…" required><small id="wallet-help">Read-only preview works with any testnet address.</small></label>
+            <div class="row-two"><label class="field"><span>DIRECTION</span><select id="side" name="side"><option value="long">Long BTC</option><option value="short">Short BTC</option></select></label><label class="field"><span>MAX NOTIONAL · USDso</span><input id="cap" name="cap" type="number" min="0.01" step="0.01" value="25" required></label></div>
+            <div class="row-two"><label class="field"><span>LIMIT PRICE · USDso</span><input id="price" name="price" type="text" inputmode="decimal" placeholder="Waiting for mark" required></label><label class="field"><span>SIZE · BTC</span><input id="quantity" name="quantity" type="text" inputmode="decimal" placeholder="0.00013" required></label></div>
+            <div class="rule-box"><div class="rule-icon">R</div><div><strong>Your order rule</strong><p>Price and quantity must fit the market grid, your selected notional cap, and the account’s live SDK limit. The check is repeated immediately before sending.</p></div></div>
+            <button id="preview-button" class="primary" type="submit">CHECK THIS ORDER <span>→</span></button>
+          </form>
+        </section>
+        <section class="panel verdict">
+          <div class="section-head"><div><span class="step">02 / VERIFY</span><h2>Live preflight</h2></div><span id="preflight-state" class="pill">AWAITING INPUT</span></div>
+          <div id="empty-preview" class="empty-preview"><div class="target-ring"><span>✓</span></div><h3>No order checked yet</h3><p>Enter a wallet, price, size and cap. ProofTrade will query the current market and account before offering an order button.</p></div>
+          <div id="preview" hidden>
+            <div class="preview-top"><span id="preview-side">LONG BTC</span><strong id="preview-notional">—</strong><small>ORDER NOTIONAL</small></div>
+            <div class="fact"><span>Quantity</span><strong id="preview-quantity">—</strong></div>
+            <div class="fact"><span>Limit price</span><strong id="preview-price">—</strong></div>
+            <div class="fact"><span>Your rule</span><strong id="preview-cap">—</strong></div>
+            <div class="fact"><span>SDK maximum now</span><strong id="preview-max">—</strong></div>
+            <div class="fact"><span>Estimated initial margin</span><strong id="preview-margin">—</strong></div>
+            <div class="fact"><span>Account equity before</span><strong id="preview-equity">—</strong></div>
+            <div class="fact"><span>Check pinned to block</span><strong id="preview-block">—</strong></div>
+            <p class="caveat">Estimates can change before confirmation. A resting limit order may be accepted without a fill. This is paper trading on testnet.</p>
+            <label class="confirm"><input id="confirm" type="checkbox"><span>I reviewed this testnet order and want to send it.</span></label>
+            <button id="place-button" class="trade-button" type="button" disabled>PLACE REAL TESTNET ORDER <span>→</span></button>
+            <p id="trade-help" class="trade-help">A dedicated testnet key must be configured locally to enable order placement.</p>
+          </div>
+        </section>
+      </div>
+      <section class="below">
+        <div class="account-block"><div class="section-head"><div><span class="step">03 / MONITOR</span><h2>Account snapshot</h2></div><button id="account-refresh" class="text-button" type="button">REFRESH ACCOUNT ↗</button></div><div id="account-details" class="account-details"><p>Enter an address to inspect the BTC position and cross-margin account.</p></div></div>
+        <div class="ledger-block"><div class="section-head"><div><span class="step">04 / PROVE</span><h2>Trade receipts</h2></div><span class="panel-note">SAVED ON THIS COMPUTER</span></div><div id="receipts" class="receipts"><p>No testnet orders have been sent from this app yet.</p></div></div>
+      </section>
+    </main>
+    <footer><span>PROOFTRADE · LOCAL TESTNET MVP</span><span>Built for dreamDEX Perps Builder Bounty</span><a href="https://app.testnet.dreamdex.io/docs/developers/perps-testnet" target="_blank" rel="noopener">Developer docs ↗</a></footer>
+  </div>
+</body>
+</html>
+
