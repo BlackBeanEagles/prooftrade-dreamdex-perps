@@ -188,13 +188,18 @@ async function loadMarket() {
   } catch (cause) {
     if (liveMarket) liveMarket.markPriceOk = false;
     byId('connection').innerHTML = '<i></i>MARKET DELAYED';
+    let recentObservation = null;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('prooftrade-mark-samples') || '[]').at(-1);
+      if (saved && Date.now() - saved.time < 5 * 60 * 1000) recentObservation = saved;
+    } catch {}
     if (!liveMarket) {
-      byId('mark-price').textContent = '—';
+      byId('mark-price').textContent = recentObservation ? fmt(recentObservation.price) : '—';
       byId('index-price').textContent = '—';
       byId('funding-rate').textContent = '—';
     }
-    byId('market-health').textContent = liveMarket ? 'Latest saved price' : 'Market unavailable';
-    byId('market-updated').textContent = lastMarketAt ? 'Last updated ' + lastMarketAt.toLocaleTimeString() : 'Try refreshing in a moment';
+    byId('market-health').textContent = liveMarket || recentObservation ? 'Last observed price' : 'Market unavailable';
+    byId('market-updated').textContent = lastMarketAt ? 'Seen at ' + lastMarketAt.toLocaleTimeString() : recentObservation ? 'Seen at ' + new Date(recentObservation.time).toLocaleTimeString() : 'Try refreshing in a moment';
     updateNotional();
     showMessage(cause.message, true, 'market');
     if (!lastMarketAt && !startupRetryScheduled) { startupRetryScheduled = true; setTimeout(() => { if (!document.hidden) loadMarket(); }, 5000); }
