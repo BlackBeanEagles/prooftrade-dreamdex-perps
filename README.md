@@ -70,7 +70,7 @@ Add links to **2 or 3 published posts** tagging `@DreamDEXSomnia` before submiss
 ## Submission checklist
 
 - [ ] Whitelist the DoraHacks email with dreamDEX.
-- [ ] Push this folder to a public GitHub repository.
+- [x] Push this folder to a public GitHub repository.
 - [ ] Fund or link a dedicated testnet wallet; place real perps orders.
 - [ ] Put transaction hashes and demo link in this README.
 - [ ] Publish and link 2–3 accurate X posts above.
@@ -93,6 +93,6 @@ These are drafts. Replace bracketed placeholders with real proof after a confirm
 - Cancellation hash, if applicable: **pending**
 - Demo video: **pending**
 - X post links: **pending**
-- GitHub URL: **pending**
+- GitHub URL: https://github.com/BlackBeanEagles/prooftrade-dreamdex-perps
 
 Do not submit the MVP track until the order hash and X links are real.
