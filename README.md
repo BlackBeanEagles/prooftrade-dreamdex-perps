@@ -6,7 +6,7 @@ A local, risk-aware order planner and transaction recorder for dreamDEX perps on
 
 ProofTrade lets a trader set a maximum order notional, preview a BTC-PERP order against the live account limit, place a real testnet order, track resting orders from on-chain state, cancel an order after explicit confirmation, and save a receipt containing the transaction hash, fills or resting order ID, and account snapshots. The local server uses `@somnia-chain/markets-sdk@0.32.1`; the browser never receives a private key.
 
-The interface visualizes live index, mark and planned limit prices, observed mark-price samples, notional cap usage, and margin utilization. Price history consists only of samples taken while the page is open; it is not a historical candle feed.
+The interface puts the order form directly beneath the live market card. It visualizes live index, mark and planned limit prices, observed mark-price samples, notional cap usage, margin utilization and the current maintenance-margin cushion. After a live check it estimates the BTC position and exposure if the whole order fills. The estimate excludes other open orders, fees and funding. Price history consists only of samples taken while the page is open; it is not a historical candle feed.
 
 The current product is for a Perps Arena participant who wants to know whether an order fits their rule and retain proof of what happened. It supports one market and one configured signing wallet. A public challenge leaderboard is the next product milestone; it is **not** implemented or claimed in this version.
 
@@ -43,7 +43,7 @@ npm run check
 npm test
 ```
 
-The rule tests cover exact decimal input, tick and lot alignment, minimum quantity, and the notional cap. A live read-only check should load BTC-PERP and its current mark price. A successful transaction appears under **Trade receipts**, and a JSON receipt is saved in `data/receipts.json` (ignored by Git). A resting limit order can have zero fills. The Open orders panel reads the chain at a reported block; indexed history can lag, so a receipt without a current open order is marked “reconciling” until an indexed terminal state appears. Cancellation verifies the on-chain owner before sending a transaction. The chart never invents historical data.
+The rule tests cover exact decimal input, tick and lot alignment, minimum quantity, and the notional cap. A live read-only check should load BTC-PERP and its current mark price. A successful transaction appears under **Trade receipts** with a downloadable PNG proof card and copyable share text, and a JSON receipt is saved in `data/receipts.json` (ignored by Git). A resting limit order can have zero fills. The Open orders panel reads the chain at a reported block; indexed history can lag, so a receipt without a current open order is marked “reconciling” until an indexed terminal state appears. Cancellation verifies the on-chain owner before sending a transaction. The chart never invents historical data.
 
 For a bounty demo, record:
 

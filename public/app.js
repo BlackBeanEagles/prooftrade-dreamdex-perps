@@ -249,10 +249,39 @@ async function loadAccount() {
     track.append(fill);
     const foot = document.createElement('p'); foot.textContent = 'Margin reserved: ' + fmt(im) + ' USDso';
     risk.append(label, track, foot);
-    byId('account-details').replaceChildren(grid, risk);
+    const cushion = document.createElement('div'); cushion.className = 'account-cushion';
+    const cushionLabel = document.createElement('span'); cushionLabel.textContent = 'MAINTENANCE MARGIN CUSHION';
+    const cushionValue = document.createElement('strong'); cushionValue.textContent = equity > 0 ? fmt(equity - mm) + ' USDso' : '—';
+    const cushionNote = document.createElement('p');
+    cushionNote.textContent = equity > 0 ? 'Account equity minus current maintenance margin. This is not a liquidation price; it can change with the market, fees and funding.' : 'Fund the account to see its current margin cushion.';
+    cushion.append(cushionLabel, cushionValue, cushionNote);
+    byId('account-details').replaceChildren(grid, risk, cushion);
   } catch (cause) {
     byId('account-details').replaceChildren(smallEmpty(friendlyError(cause.message)));
   }
+}
+function positionText(size) {
+  if (!Number.isFinite(size) || Math.abs(size) < 1e-10) return 'Flat';
+  return (size > 0 ? 'Long ' : 'Short ') + fmt(Math.abs(size), 8) + ' BTC';
+}
+function renderImpact(p) {
+  const now = Number(p.accountState.positionSize);
+  const change = Number(p.quantity) * (p.side === 'long' ? 1 : -1);
+  const after = now + change;
+  const mark = Number(p.markPrice);
+  if (![now, change, after, mark].every(Number.isFinite) || mark <= 0) return;
+  byId('impact-now').textContent = positionText(now);
+  byId('impact-after').textContent = positionText(after);
+  const scale = Math.max(Math.abs(now), Math.abs(after), Number(p.quantity));
+  byId('impact-current-bar').style.width = Math.round(Math.abs(now) / scale * 100) + '%';
+  byId('impact-after-bar').style.width = Math.round(Math.abs(after) / scale * 100) + '%';
+  const oldExposure = Math.abs(now) * mark;
+  const nextExposure = Math.abs(after) * mark;
+  let summary = 'BTC exposure stays about the same.';
+  if (nextExposure > oldExposure + 0.01) summary = 'BTC exposure rises from ' + fmt(oldExposure) + ' to ' + fmt(nextExposure) + ' USDso.';
+  if (nextExposure < oldExposure - 0.01) summary = 'BTC exposure falls from ' + fmt(oldExposure) + ' to ' + fmt(nextExposure) + ' USDso.';
+  if (now !== 0 && after !== 0 && Math.sign(now) !== Math.sign(after)) summary += ' This order would flip the position.';
+  byId('impact-summary').textContent = summary;
 }
 function renderPreview(p) {
   byId('empty-preview').hidden = true;
@@ -268,8 +297,60 @@ function renderPreview(p) {
   byId('preview-margin').textContent = `${fmt(p.estimatedInitialMargin)} USDso`;
   byId('preview-equity').textContent = `${fmt(p.accountState.equity)} USDso`;
   byId('preview-block').textContent = p.asOfBlock;
+  renderImpact(p);
   byId('confirm').checked = false;
   updatePlaceButton();
+}
+function receiptOutcome(r) {
+  if (r.txStatus !== 'success') return 'Transaction failed';
+  if (r.fills?.length) return r.fills.length + (r.fills.length === 1 ? ' fill' : ' fills') + ' recorded';
+  if (r.orderId) return 'Limit order resting; no fill in this transaction';
+  return 'Confirmed; no fill recorded';
+}
+function shareText(r) {
+  return 'ProofTrade · ' + r.market + ' ' + r.side.toUpperCase() + '\n' +
+    r.requestedQuantity + ' BTC at ' + fmt(r.requestedPrice) + ' USDso · cap ' + fmt(r.riskCap) + ' USDso\n' +
+    receiptOutcome(r) + '\n' +
+    'https://explorer.testnet.somnia.network/tokyo/tx/' + r.txHash;
+}
+function drawReceiptCard(r) {
+  const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = 630;
+  const c = canvas.getContext('2d');
+  c.fillStyle = '#0c1518'; c.fillRect(0, 0, 1200, 630);
+  const gradient = c.createLinearGradient(0, 0, 1200, 630);
+  gradient.addColorStop(0, '#183126'); gradient.addColorStop(1, '#0d1a1b');
+  c.fillStyle = gradient; c.fillRect(28, 28, 1144, 574);
+  c.strokeStyle = '#5d9c6c'; c.lineWidth = 2; c.strokeRect(28, 28, 1144, 574);
+  c.fillStyle = '#bdecc8'; c.font = 'bold 26px Arial'; c.fillText('P / T   ProofTrade', 76, 92);
+  c.fillStyle = '#8eb29a'; c.font = '18px Arial'; c.fillText('SOMNIA HIDEKI TESTNET  /  TRADE RECEIPT', 76, 132);
+  c.fillStyle = '#e7f5ea'; c.font = 'bold 60px Arial'; c.fillText(r.side.toUpperCase() + ' ' + r.market, 76, 222, 1040);
+  c.fillStyle = r.txStatus === 'success' ? '#bdecc8' : '#f2aa93';
+  c.font = '26px Arial'; c.fillText(receiptOutcome(r), 78, 272, 1040);
+  c.strokeStyle = '#3f6650'; c.beginPath(); c.moveTo(76, 305); c.lineTo(1120, 305); c.stroke();
+  const items = [
+    ['SIZE', r.requestedQuantity + ' BTC'],
+    ['LIMIT', fmt(r.requestedPrice) + ' USDso'],
+    ['RULE', 'Max ' + fmt(r.riskCap) + ' USDso'],
+  ];
+  items.forEach((item, i) => {
+    const x = 76 + i * 350;
+    c.fillStyle = '#8eb29a'; c.font = '17px Arial'; c.fillText(item[0], x, 352);
+    c.fillStyle = '#e5f4e8'; c.font = 'bold 27px Arial'; c.fillText(item[1], x, 393, 320);
+  });
+  c.fillStyle = '#8eb29a'; c.font = '17px Arial'; c.fillText('TRANSACTION', 76, 465);
+  c.fillStyle = '#d5ebda'; c.font = '20px Consolas, monospace'; c.fillText(r.txHash, 76, 500, 1040);
+  c.fillStyle = '#759785'; c.font = '16px Arial';
+  c.fillText('Verify on explorer.testnet.somnia.network/tokyo', 76, 556);
+  c.textAlign = 'right'; c.fillText(new Date(r.createdAt).toLocaleDateString(), 1110, 556);
+  return canvas;
+}
+function downloadReceiptCard(r) {
+  drawReceiptCard(r).toBlob(blob => {
+    if (!blob) { showMessage('Could not create the share card.', true); return; }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'prooftrade-' + r.txHash.slice(0, 10) + '.png'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, 'image/png');
 }
 async function loadReceipts() {
   const list = await api('/api/receipts');
@@ -297,7 +378,14 @@ async function loadReceipts() {
       const a = document.createElement('a'); a.href = url; a.download = `prooftrade-${r.txHash.slice(0, 10)}.json`; a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     });
-    actions.append(link, download); card.append(top, desc, actions); parent.append(card);
+    const share = document.createElement('button'); share.type = 'button'; share.textContent = 'SAVE PROOF CARD ↓';
+    share.addEventListener('click', () => downloadReceiptCard(r));
+    const copy = document.createElement('button'); copy.type = 'button'; copy.textContent = 'COPY SHARE TEXT';
+    copy.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(shareText(r)); copy.textContent = 'COPIED'; setTimeout(() => { copy.textContent = 'COPY SHARE TEXT'; }, 2000); }
+      catch { showMessage('Could not copy. You can use the explorer link and saved receipt instead.', true); }
+    });
+    actions.append(link, download, share, copy); card.append(top, desc, actions); parent.append(card);
   }
 }
 byId('trade-form').addEventListener('input', () => { invalidate(); updateNotional(); });
