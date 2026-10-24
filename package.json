@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file-if-exists=.env server.mjs",
-    "check": "node --check server.mjs && node --check rules.mjs && node --check public/app.js",
+    "check": "node --check server.mjs && node --check rules.mjs && node --check public/app.js && node --check public/enhancements.js",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {

@@ -4,7 +4,7 @@ import { join, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SomniaMarkets, SOMNIA_HIDEKI_TESTNET_ADDRESSES } from '@somnia-chain/markets-sdk';
 import { hidekiTestnet } from '@somnia-chain/markets-sdk/chains';
-import { formatUnits, isAddress, parseUnits } from 'viem';
+import { createPublicClient, formatUnits, http as viemHttp, isAddress, parseUnits } from 'viem';
 import { validateOrder, toRaw, calculateNotional } from './rules.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
@@ -14,6 +14,7 @@ const port = Number(process.env.PORT || 4173);
 const privateKey = process.env.PRIVATE_KEY?.trim();
 const maxNotional = process.env.MAX_NOTIONAL_USDSO || '25';
 const INDEXER = 'https://hideki-dev.smk.somnia.host/v1/graphql';
+const httpClient = createPublicClient({ chain: hidekiTestnet, transport: viemHttp() });
 const markets = new SomniaMarkets({
   chain: hidekiTestnet,
   indexerUrl: INDEXER,
@@ -27,9 +28,11 @@ function json(res, status, payload) {
   res.end(body);
 }
 function error(res, status, message) { json(res, status, { error: message }); }
-function safeError(cause) { return cause instanceof Error ? cause.message.slice(0, 500) : 'Unexpected error'; }
+function safeError(cause) { const message = cause instanceof Error ? cause.message : 'Unexpected error'; return message.includes('genesis check failed') ? 'Hideki WebSocket RPC is unavailable from this computer. Check outbound WebSocket access.' : message.slice(0, 500); }
 function format(raw, decimals) { return formatUnits(BigInt(raw), decimals); }
+let cachedBtcMarket = null;
 async function btcMarket() {
+  if (cachedBtcMarket) return cachedBtcMarket;
   const all = await markets.client.listPerpMarkets();
   const btc = all.find(m => m.baseSymbol === 'BTC');
   if (!btc) throw new Error('BTC-PERP is unavailable on this testnet.');
@@ -102,6 +105,26 @@ async function saveReceipt(receipt) {
   list.unshift(receipt);
   await writeFile(receiptsPath, JSON.stringify(list.slice(0, 200), null, 2));
 }
+async function updateReceipt(orderId, patch) {
+  const list = await readReceipts();
+  const item = list.find(r => r.orderId === orderId);
+  if (item) {
+    Object.assign(item, patch);
+    await writeFile(receiptsPath, JSON.stringify(list, null, 2));
+  }
+}
+async function openOrders(market, account) {
+  const result = await markets.client.getOpenOrdersOnchain([market.poolAddress], account);
+  return {
+    asOfBlock: result.blockNumber.toString(),
+    orders: result.orders.map(o => ({
+      orderId: o.orderId.toString(), owner: o.owner, side: o.isBid ? 'long' : 'short',
+      price: format(o.price, market.quoteDecimals),
+      quantityRemaining: format(o.quantityRemaining, market.baseDecimals),
+      fullQuantity: format(o.fullQuantity, market.baseDecimals),
+    })),
+  };
+}
 async function parseBody(req) {
   let body = '';
   for await (const chunk of req) {
@@ -137,6 +160,54 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/account') {
       const m = await btcMarket();
       return json(res, 200, await accountSnapshot(m, url.searchParams.get('address') || markets.walletAddress || ''));
+    }
+    if (req.method === 'GET' && url.pathname === '/api/funding') {
+      if (!markets.walletAddress) return error(res, 409, 'Configure a local signer first.');
+      const native = await httpClient.getBalance({ address: markets.walletAddress });
+      let voucher = { eligible: false, reason: 'chainReadUnavailable' };
+      try {
+        const m = await btcMarket();
+        const eligibility = await markets.client.getPerpVoucherEligibility(m.marginBank, markets.walletAddress);
+        voucher = eligibility.eligible
+          ? { eligible: true, grantUsdso: format(eligibility.grantAmount, m.quoteDecimals) }
+          : { eligible: false, reason: eligibility.reason };
+      } catch { /* gas balance remains useful when the SDK WebSocket is unreachable */ }
+      return json(res, 200, { account: markets.walletAddress, gasStt: formatUnits(native, 18), voucher });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/voucher/claim') {
+      if (!privateKey || !markets.walletAddress) return error(res, 409, 'Configure a local signer first.');
+      const body = await parseBody(req);
+      if (body.confirm !== 'CLAIM_TESTNET_VOUCHER') return error(res, 400, 'Explicit confirmation is required.');
+      const m = await btcMarket();
+      const eligibility = await markets.client.getPerpVoucherEligibility(m.marginBank, markets.walletAddress);
+      if (!eligibility.eligible) return error(res, 409, 'Voucher unavailable: ' + eligibility.reason);
+      const result = await markets.trader.claimPerpVoucher({ marginBank: m.marginBank });
+      return json(res, 200, { txHash: result.hash, txStatus: result.receipt.status });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/orders/live') {
+      const m = await btcMarket();
+      const account = url.searchParams.get('address') || markets.walletAddress || '';
+      if (!isAddress(account)) return error(res, 400, 'Enter a valid 0x wallet address.');
+      const live = await openOrders(m, account);
+      let history = [], historyError = null;
+      try {
+        const rows = await markets.client.getOrders(account, { pool: m.poolAddress, limit: 20 });
+        history = rows.map(o => ({ orderId: String(o.orderId), status: o.status, side: o.isBid ? 'long' : 'short' }));
+      } catch (cause) { historyError = safeError(cause); }
+      return json(res, 200, { ...live, history, historyError });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/orders/cancel') {
+      if (!privateKey || !markets.walletAddress) return error(res, 409, 'Configure a local signer first.');
+      const body = await parseBody(req);
+      if (body.confirm !== 'CANCEL_TESTNET_ORDER' || !/^[0-9]+$/.test(String(body.orderId || ''))) return error(res, 400, 'Valid order ID and explicit confirmation are required.');
+      const m = await btcMarket();
+      const live = await openOrders(m, markets.walletAddress);
+      const target = live.orders.find(o => o.orderId === String(body.orderId) && o.owner.toLowerCase() === markets.walletAddress.toLowerCase());
+      if (!target) return error(res, 409, 'This order is not open on-chain for the configured signer.');
+      const result = await markets.trader.cancelOrder({ pool: m.poolAddress, orderId: BigInt(body.orderId) });
+      const cancellation = { txHash: result.hash, txStatus: result.receipt.status, cancelledAt: new Date().toISOString() };
+      try { await updateReceipt(String(body.orderId), { cancellation }); } catch { /* on-chain cancellation still stands */ }
+      return json(res, 200, { orderId: String(body.orderId), ...cancellation });
     }
     if (req.method === 'GET' && url.pathname === '/api/receipts') return json(res, 200, await readReceipts());
     if (req.method === 'POST' && url.pathname === '/api/preview') {
