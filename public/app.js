@@ -100,7 +100,8 @@ function renderVisuals({ price, quantity, cap, valid, notional, fraction }) {
   byId('map-low').textContent = fmt(low);
   byId('map-high').textContent = fmt(high);
   const distance = valid ? ((price - mark) / mark) * 100 : null;
-  byId('map-range').textContent = distance === null ? 'Enter a limit to compare' : Math.abs(distance) < .0005 ? 'Limit at mark' : `Limit ${Math.abs(distance).toFixed(3)}% ${distance > 0 ? 'above' : 'below'} mark`;
+  const rangeText = distance === null ? 'Enter a limit to compare' : Math.abs(distance) < .0005 ? 'Limit at mark' : `Limit ${Math.abs(distance).toFixed(3)}% ${distance > 0 ? 'above' : 'below'} mark`;
+  byId('map-range').textContent = liveMarket?.markPriceOk ? rangeText : 'Last observed · ' + rangeText;
   const gap = mark - index;
   byId('basis-value').textContent = `${gap >= 0 ? '+' : '−'}${fmt(Math.abs(gap))} USDso`;
   byId('basis-explain').textContent = `Mark is ${Math.abs(gap / index * 100).toFixed(3)}% ${gap >= 0 ? 'above' : 'below'} the index at this snapshot.`;
